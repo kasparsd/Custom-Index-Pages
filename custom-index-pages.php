@@ -1,7 +1,7 @@
 <?php
 /*
  Plugin Name: Index Pages
- Plugin URI: 
+ Plugin URI: https://github.com/kasparsd/Custom-Index-Pages
  Description: Add any pages as a taxonomy or post index page.
  Version: 0.2
  Author: Kaspars Dambis
@@ -26,6 +26,39 @@ function cip_plugins_url_symlink_fix($url, $path, $plugin) {
 		return str_replace(dirname(__FILE__), '/' . basename(dirname($plugin)), $url);
 
 	return $url;
+}
+
+
+add_action('admin_init', 'cip_git_updater');
+
+function cip_git_updater() {
+	// A modified version of https://github.com/jkudish/WordPress-GitHub-Plugin-Updater
+	require_once('updater/updater.php');
+
+	$config = array(
+		'slug' => basename(dirname(__FILE__)) . '/' . basename(__FILE__),
+		'proper_folder_name' => basename(dirname(__FILE__)),
+		'api_url' => 'https://api.github.com/repos/kasparsd/Custom-Index-Pages',
+		'raw_url' => 'https://raw.github.com/kasparsd/Custom-Index-Pages/master',
+		'github_url' => 'https://github.com/kasparsd/Custom-Index-Pages',
+		'zip_url' => 'http://github.com/kasparsd/Custom-Index-Pages/zipball/master',
+		'sslverify' => false,
+		'requires' => '3.0',
+		'tested' => '3.4',
+	);
+
+	new WPGitHubUpdater($config);
+}
+
+
+// Disable sslverify for HTTPS plugin updates from github
+add_action('http_request_args', 'cip_disable_sslverify', 10, 2);
+
+function cip_disable_sslverify($args, $url) {
+	if (strstr($url, 'simple-attributes'))
+		$args['sslverify'] = false;
+	
+	return $args;
 }
 
 
