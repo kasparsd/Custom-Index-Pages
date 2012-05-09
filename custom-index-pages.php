@@ -19,9 +19,9 @@ function cpt_atts_submenu_page() {
 
 
 // Enable support for this plugin as a symlink
-add_filter('plugins_url', 'plugins_url_symlink_fix', 10, 3);
+add_filter('plugins_url', 'cip_plugins_url_symlink_fix', 10, 3);
 
-function plugins_url_symlink_fix($url, $path, $plugin) {
+function cip_plugins_url_symlink_fix($url, $path, $plugin) {
 	if (strstr($plugin, basename(__FILE__)))
 		return str_replace(dirname(__FILE__), '/' . basename(dirname($plugin)), $url);
 
