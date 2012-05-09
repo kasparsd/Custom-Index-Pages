@@ -7,7 +7,7 @@ if ( !defined('ABSPATH') )
 if ( ! class_exists( 'WPGitHubUpdater' ) ) :
 
 /**
- * @version 1.3.1
+ * @version 1.3.2
  * @author Joachim Kudish <info@jkudish.com>
  * @link http://jkudish.com
  * @package GithubUpdater
@@ -47,7 +47,7 @@ class WPGitHubUpdater {
 
 		$this->set_defaults();
 
-		if ( defined('WP_GITHUB_FORCE_UPDATE') || WP_GITHUB_FORCE_UPDATE )
+		if ( defined('WP_GITHUB_FORCE_UPDATE') )
 			add_action( 'admin_init', array( $this, 'delete_transients' ) );
 		
 		add_filter( 'pre_set_site_transient_update_plugins', array( $this, 'api_check' ) );
