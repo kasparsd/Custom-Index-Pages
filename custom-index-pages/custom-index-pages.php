@@ -3,7 +3,7 @@
  Plugin Name: Index Pages
  Plugin URI: https://github.com/kasparsd/Custom-Index-Pages
  Description: Add any pages as a taxonomy or post index page.
- Version: 0.2
+ Version: 0.3
  Author: Kaspars Dambis
  Author URI: http://konstruktors.com
  Text Domain: cip
