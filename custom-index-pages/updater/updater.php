@@ -294,7 +294,7 @@ class WPGitHubUpdater {
 	 * @return array $result the result of the move
 	 */
 	public function upgrader_post_install( $true, $hook_extra, $result ) {
-
+		
 		global $wp_filesystem;
 
 		// Move & Activate

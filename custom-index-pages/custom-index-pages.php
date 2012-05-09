@@ -35,6 +35,9 @@ function cip_git_updater() {
 	// A modified version of https://github.com/jkudish/WordPress-GitHub-Plugin-Updater
 	require_once('updater/updater.php');
 
+	// Force update check
+	// define('WP_GITHUB_FORCE_UPDATE', true);
+
 	$config = array(
 		'slug' => basename(dirname(__FILE__)) . '/' . basename(__FILE__),
 		'proper_folder_name' => basename(dirname(__FILE__)),
