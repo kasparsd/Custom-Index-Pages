@@ -457,6 +457,7 @@ function cip_modify_query($query) {
 add_filter( 'nav_menu_css_class', 'cip_correct_menu_active_parents', 10, 2 );
 
 function cip_correct_menu_active_parents( $classes, $item ) {
+	// TODO: remove anon function!!!
 	if ( $item->object_id == get_option('page_for_posts') )
 		$classes = array_filter( $classes, function( $i ) { 
 											if ( strstr( $i, 'current_page' ) ) 
