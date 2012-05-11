@@ -3,7 +3,7 @@
  Plugin Name: Index Pages
  Plugin URI: https://github.com/kasparsd/Custom-Index-Pages
  Description: Add any pages as a taxonomy or post index page.
- Version: 0.3
+ Version: 0.4
  Author: Kaspars Dambis
  Author URI: http://konstruktors.com
  Text Domain: cip
@@ -93,6 +93,10 @@ function cip_settings() {
 				$pages = get_pages(array());
 			?>
 
+			<?php if ( ! $wp_rewrite->using_permalinks() ) : ?>
+				<p class="notice"><?php printf( __('Please enable <a href="%s">pretty permalinks</a> to make the best use this plugin.'), 'options-permalink.php' ); ?></p>
+			<?php endif; ?>
+
 			<h3><?php _e('Post types'); ?></h3>
 
 			<table class="form-table">
@@ -100,9 +104,31 @@ function cip_settings() {
 				<tr>
 					<th><?php echo $post_type->labels->name; ?></th>
 					<td>
+						<?php if ( $post_type->has_archive ) : ?>
+							<p>
+								<label>
+									<?php _e('Index page:'); ?>
+									<?php 
+										$selected = '';
+										if (isset($settings[$post_type->name]['index']))
+											$selected = $settings[$post_type->name]['index'];
+
+										wp_dropdown_pages( 
+											array( 
+												'name' => 'cip_settings['. esc_attr($post_type->name) .'][index]', 
+												'show_option_none' => __( '&mdash; Default &mdash;' ), 
+												'option_none_value' => '', 
+												'selected' => $selected
+											)
+										); 
+									?>
+								</label>
+							</p>
+						<?php endif; ?>	
+
 						<p>
 							<label>
-								<?php _e('Parent page:'); ?>
+								<?php _e('Single page:'); ?>
 								<?php 
 									$selected = '';
 									if (isset($settings[$post_type->name]['page']))
@@ -119,6 +145,7 @@ function cip_settings() {
 								?>
 							</label>
 						</p>
+																	
 						<!--
 						<p>
 							<label class="cip_struct">
@@ -162,21 +189,26 @@ function cip_settings() {
 				<tr>
 					<th><?php echo $taxonomy->labels->name; ?></th>
 					<td>
-					<?php 
-						$selected = '';
-						if (isset($settings[$taxonomy->name]['page']))
-							$selected = $settings[$taxonomy->name]['page'];
+						<p>
+							<label>
+								<?php _e('Index page:'); ?>						
+								<?php 
+									$selected = '';
+									if (isset($settings[$taxonomy->name]['index']))
+										$selected = $settings[$taxonomy->name]['index'];
 
-						wp_dropdown_pages( 
-							array( 
-								'name' => 'cip_settings['. esc_attr($taxonomy->name) .'][page]', 
-								'show_option_none' => __( '&mdash; Default &mdash;' ), 
-								'option_none_value' => '', 
-								'selected' => $selected
-							)
-						); 
-					?>
-					<td>
+									wp_dropdown_pages( 
+										array( 
+											'name' => 'cip_settings['. esc_attr($taxonomy->name) .'][index]', 
+											'show_option_none' => __( '&mdash; Default &mdash;' ), 
+											'option_none_value' => '', 
+											'selected' => $selected
+										)
+									); 
+								?>
+							</label>
+						</p>
+					</td>
 				</tr>
 			<?php endforeach; ?>	
 			</table>		
@@ -186,8 +218,13 @@ function cip_settings() {
 			</p>
 
 			<style type="text/css">
-				#cip_settings .cip_struct { }	
-				#cip_settings .form-table th { }
+				#cip_settings .cip_struct { }
+				#cip_settings .form-table { width:auto; min-width:50%; border-top:5px solid #ccc; margin-bottom:3em; }
+				#cip_settings .form-table td p { margin:0.2em 0; }
+				#cip_settings .form-table td { text-align:right; }
+				#cip_settings .form-table th { font-weight:bold; width:auto; max-width:100px; padding:1.2em 0 0 0; }
+				#cip_settings .form-table th, #cip_settings .form-table td { border-bottom:1px solid #ccc; }
+				#cip_settings .notice { background:#eee; padding:0.5em 1em; border:1px solid #ccc; }
 			</style>
 		</form>
 	</div>
@@ -205,38 +242,52 @@ function cip_settings_validate($input) {
 	$settings = get_option('cip_settings');
 	$settings[$current_language] = $input;
 
+	//$settings = array();
 	return $settings;
 }
 
 
-add_filter('init', 'add_custom_post_taxonomy_slugs', 500);
+add_filter( 'init', 'add_custom_post_taxonomy_slugs', 100 );
 
 function add_custom_post_taxonomy_slugs() {
 	global $wp_rewrite;
 
-	if (is_admin())
+	if ( is_admin() || ! $wp_rewrite->using_permalinks() )
 		return;
 
-	$settings = get_option('cip_settings');
+	$settings = cip_get_settings( 'all' );
 
-	if (empty($settings))
+	if ( empty($settings) )
 		return;
 
-	$current_lang = apply_filters('cip_current_language', 'default');
+	// We don't need this, because all of our rewrites are in the extra_permastructs already
+	$wp_rewrite->extra_rules_top = array();
+
+	$current_lang = apply_filters( 'cip_current_language', 'default' );
 	$lang_permastructures = array();
 
-	foreach ($wp_rewrite->extra_permastructs as $name => $structure) {
-		foreach ($settings as $lang => $cips) {
-			if (isset($cips[$name]['page']) && !empty($cips[$name]['page'])) {
-				// Remove the site URL from the permalink
-				$prefix = trim(str_replace(get_bloginfo('url') . '/', '', get_permalink($cips[$name]['page'])), '/');
-				$structure = str_replace($name . '/', $prefix . '/', $wp_rewrite->extra_permastructs[$name]['struct']);
+	foreach ( $wp_rewrite->extra_permastructs as $name => $structure ) {
+		foreach ( $settings as $lang => $cips ) {
+			$page_id = 0;
 
-				if ($lang == $current_lang) {
-					$lang_permastructures[$name]['struct'] = $structure;
-					$lang_permastructures[$name]['with_front'] = false;
-				}
-				
+			// Change only taxonomy and post_type NON index rewrites
+			if ( post_type_exists($name) && isset( $cips[$name]['page'] ) && ! empty( $cips[$name]['page'] ) )
+				$page_id = $cips[$name]['page'];
+			else if ( isset( $cips[$name]['index'] ) && ! empty( $cips[$name]['index'] ) )
+				$page_id = $cips[$name]['index'];
+			else
+				continue;
+			
+			// Remove the site URL from the permalink
+			$prefix = trim( str_replace( get_bloginfo('url') . '/', '', get_permalink($page_id) ), '/' );
+			$structure = str_replace($name . '/', $prefix . '/', $wp_rewrite->extra_permastructs[$name]['struct']);
+			
+			// Change the permastructures for the current language by default
+			$lang_permastructures[$name]['struct'] = $structure;
+			$lang_permastructures[$name]['with_front'] = false;
+			
+			// Add permastructures for other languages, in case we need to find the permalink of the translation
+			if ( $lang != $current_lang ) {
 				$lang_permastructures[$name . '_' . $lang]['struct'] = $structure;
 				$lang_permastructures[$name . '_' . $lang]['with_front'] = false;
 			}
@@ -272,27 +323,27 @@ add_filter('term_link', 'get_term_link_for_lang', 20, 3);
 function get_term_link_for_lang($link, $term, $taxonomy) {
 	global $wp_rewrite;
 	
-	$link_lang = apply_filters('cip_term_link_language', 'default', $term->term_id, $taxonomy);
-	$current_language = apply_filters('cip_current_language', 'default');
+	$link_lang = apply_filters( 'cip_term_link_language', 'default', $term->term_id, $taxonomy );
+	$current_language = apply_filters( 'cip_current_language', 'default' );
 
-	if (empty($link_lang) || $current_language == $link_lang)
+	if ( empty($link_lang) || $current_language == $link_lang )
 		return $link;
 
 	// Get the permalink structure for the target language
-	$term_link = $wp_rewrite->get_extra_permastruct($taxonomy . '_' . $link_lang);
-	$term_link = str_replace("%$taxonomy%", $term->slug, $term_link);
+	$term_link = $wp_rewrite->get_extra_permastruct( $taxonomy . '_' . $link_lang );
+	$term_link = str_replace( "%$taxonomy%", $term->slug, $term_link );
 	$term_link = home_url( user_trailingslashit($term_link) );
 
 	return $term_link;
 }
 
 
-add_filter('rewrite_rules_array', 'add_custom_index_page_rewrites');
+add_filter( 'rewrite_rules_array', 'add_custom_index_page_rewrites' );
 
 function add_custom_index_page_rewrites($rules) {
 	$rules_mod = array();
 
-	$settings = get_option('cip_settings');
+	$settings = cip_get_settings( 'all' );
 
 	if (empty($settings))
 		return $rules;
@@ -301,24 +352,41 @@ function add_custom_index_page_rewrites($rules) {
 			$replace_with = array();
 			
 			foreach ($settings as $lang => $cips) {
-				foreach ($cips as $cip_name => $cip_settings) {
-					if (strpos($pattern, $cip_name) !== false && !empty($cip_settings['page'])) {
+
+				foreach ($cips as $object_type => $cip_settings) {
+					if ( strpos( $pattern, $object_type ) === false )
+						continue;
+
+					if ( ! empty( $cip_settings['page'] ) && ! strpos( $replace, 'post_type' ) ) {
 						$replace_with[$lang] = array(
-								'name' => $cip_name,
+								'name' => $object_type,
 								'post_id' => $cip_settings['page'],
 							);
+
 						if (isset($cip_settings['struct']) && !empty($cip_settings['struct']))
 							$replace_with[$lang]['struct'] = trim($cip_settings['struct'], '/');
+						
+						break;
+					} else if ( ! empty( $cip_settings['index'] ) ) {
+						$replace_with[$lang] = array(
+								'name' => $object_type,
+								'post_id' => $cip_settings['index'],
+							);
+						
+						if (isset($cip_settings['struct']) && !empty($cip_settings['struct']))
+							$replace_with[$lang]['struct'] = trim($cip_settings['struct'], '/');
+						
 						break;
 					}
 				}
 			}
 
-			if (!empty($replace_with)) {
-				foreach ($replace_with as $lang => $to_replace) {
+			if ( !empty($replace_with) ) {
+				foreach ( $replace_with as $lang => $to_replace ) {
+					// Remove the base URL from thepermalink
 					$relative_permalink = trim(str_replace(get_bloginfo('url') . '/', '', get_permalink($to_replace['post_id'])), '/');
-					$relative_permalink = ltrim($relative_permalink, $lang . '/');
-					$rules_mod[str_replace($to_replace['name'], $relative_permalink, $pattern)] = $replace;
+					//$relative_permalink = ltrim($relative_permalink, $lang . '/');
+					$rules_mod[ str_replace($to_replace['name'], $relative_permalink, $pattern) ] = $replace;
 				}
 			} else {
 				$rules_mod[$pattern] = $replace;
@@ -333,6 +401,117 @@ function add_custom_index_page_rewrites($rules) {
 }
 
 
+add_filter( 'pre_get_posts',  'cip_modify_query' );
+
+function cip_modify_query($query) {
+	if ( is_admin() )
+		return $query;
+
+	if ( isset( $query->query_vars['suppress_filters'] ) && ! empty( $query->query_vars['suppress_filters'] ) )
+		return $query;
+	
+	$settings = cip_get_settings();
+
+	if ( empty( $settings ) )
+		return $query;
+
+	if ( isset( $query->queried_object_id ) )
+		$page_id = $query->queried_object_id;
+	else
+		$page_id = $query->get('page_id');
+
+	$page_object = cip_get_page_object( $page_id );
+
+	if ( empty( $page_object ) )
+		return $query;
+
+	if ( $page_object['type'] != 'index' )
+		return $query;
+
+	if ( ! post_type_exists( $page_object['object_name'] ) )
+		return $query;
+	
+	$query->set( 'post_type', $page_object['object_name'] );
+	$query->set( 'page_id', 0 );
+	$query->set( 'pagename', null );
+
+	$query->is_singular = false;
+	$query->is_page = false;
+	$query->is_archive = true;
+	$query->is_post_type_archive = true;
+	$query->queried_object = get_page( $page_id );
+	$query->queried_object_id = $page_id;
+
+	return $query;
+}
+
+
+add_filter( 'nav_menu_css_class', 'cip_correct_menu_active_parents', 10, 2 );
+
+function cip_correct_menu_active_parents( $classes, $item ) {
+	if ( $item->object_id == get_option('page_for_posts') )
+		$classes = array_filter( $classes, function( $i ) { 
+											if ( strstr( $i, 'current_page' ) ) 
+												return false; 
+											else 
+												return true; 
+											} );
+
+	if ( $item->object_id == cip_get_single_page_id( get_post_type() ) || $item->object_id == cip_get_index_page_id( get_post_type() ) )
+		$classes[] = 'current_page_parent';
+
+	return $classes;
+}
+
+
+/* 
+	Settings getters
+*/
+
+function cip_get_single_page_id( $object_name, $language = 'default' ) {
+	$settings = cip_get_settings( $language );
+
+	if ( isset( $settings[ $object_name ][ 'page' ] ) )
+		return $settings[ $object_name ][ 'page' ];
+
+	return false;
+}
+
+function cip_get_index_page_id( $object_name, $language = 'default' ) {
+	$settings = cip_get_settings( $language );
+
+	if ( isset( $settings[ $object_name ][ 'index' ] ) )
+		return $settings[ $object_name ][ 'index' ];
+
+	return false;
+}
+
+function cip_get_page_object( $page_id, $language = 'default' ) {
+	$settings = cip_get_settings( $language );
+
+	foreach ( $settings as $object_name => $pages )
+		if ( $page_type =  array_search( $page_id, $pages ) )
+			return array( 
+					'object_name' => $object_name,
+					'type' => $page_type
+				);
+
+	return false; 
+}
+
+function cip_get_settings( $language = 'default' ) {
+	$settings = get_option('cip_settings');
+
+	if ( $language == 'all' )
+		return $settings;
+	
+	$current_language = apply_filters( 'cip_current_language', $language );
+
+	if ( isset( $settings[ $current_language ] ) )
+		return $settings[ $current_language ];
+
+	return array();
+}
 
 
 /*
