@@ -70,12 +70,7 @@ function cip_settings() {
 
 	$current_language = apply_filters('cip_current_language', 'default');
 
-	$settings = get_option('cip_settings');
-
-	if (isset($settings[$current_language]) && !empty($settings[$current_language]))
-		$settings = $settings[$current_language];
-	else
-		$settings = array();
+	$settings = cip_get_settings();
 
 	?>
 
@@ -237,7 +232,7 @@ function cip_settings_validate($input) {
 	global $wp_rewrite;
 	$wp_rewrite->flush_rules();
 	
-	$current_language = apply_filters('cip_current_language', 'default');
+	$current_language = apply_filters( 'cip_current_language', 'default' );
 
 	$settings = get_option('cip_settings');
 	$settings[$current_language] = $input;
@@ -282,19 +277,22 @@ function add_custom_post_taxonomy_slugs() {
 			$prefix = trim( str_replace( get_bloginfo('url') . '/', '', get_permalink($page_id) ), '/' );
 			$structure = str_replace($name . '/', $prefix . '/', $wp_rewrite->extra_permastructs[$name]['struct']);
 			
-			// Change the permastructures for the current language by default
-			$lang_permastructures[$name]['struct'] = $structure;
-			$lang_permastructures[$name]['with_front'] = false;
+			if ( $lang == $current_lang ) {
+				// Change the permastructures for the current language by default
+				$lang_permastructures[$name] = $wp_rewrite->extra_permastructs[$name];
+				$lang_permastructures[$name]['struct'] = $structure;
+				$lang_permastructures[$name]['with_front'] = false;
+			}
 			
 			// Add permastructures for other languages, in case we need to find the permalink of the translation
-			if ( $lang != $current_lang ) {
-				$lang_permastructures[$name . '_' . $lang]['struct'] = $structure;
-				$lang_permastructures[$name . '_' . $lang]['with_front'] = false;
-			}
+			$lang_permastructures[$name . '_' . $lang] = $wp_rewrite->extra_permastructs[$name];
+			$lang_permastructures[$name . '_' . $lang]['struct'] = $structure;
+			$lang_permastructures[$name . '_' . $lang]['with_front'] = false;
 		}
 	}
 
 	$wp_rewrite->extra_permastructs = array_merge($wp_rewrite->extra_permastructs, $lang_permastructures);
+	//print_r($wp_rewrite->extra_permastructs);
 }
 
 
@@ -302,7 +300,7 @@ add_filter('post_type_link', 'get_post_type_link_for_lang', 20, 2);
 
 function get_post_type_link_for_lang($link, $post) {
 	global $wp_rewrite;
-	
+
 	$link_lang = apply_filters('cip_post_type_link_language', 'default', $post->post_type, $post->ID);
 	$current_language = apply_filters('cip_current_language', 'default');
 
@@ -310,35 +308,45 @@ function get_post_type_link_for_lang($link, $post) {
 		return $link;
 
 	// Get the permalink structure for the target language
-	$post_link = $wp_rewrite->get_extra_permastruct($post->post_type . '_' . $link_lang);
-	$post_link = str_replace("%$post->post_type%", $post->post_name, $post_link);
+	$post_link_structure = $wp_rewrite->get_extra_permastruct($post->post_type . '_' . $link_lang);
+
+	if ( empty( $post_link_structure ) )
+		return $link;
+
+	$post_link = str_replace("%$post->post_type%", $post->post_name, $post_link_structure);
 	$post_link = home_url( user_trailingslashit($post_link) );
 
 	return $post_link;
 }
 
 
-add_filter('term_link', 'get_term_link_for_lang', 20, 3);
+//add_filter('term_link', 'get_term_link_for_lang', 20, 3);
 
 function get_term_link_for_lang($link, $term, $taxonomy) {
 	global $wp_rewrite;
 	
 	$link_lang = apply_filters( 'cip_term_link_language', 'default', $term->term_id, $taxonomy );
 	$current_language = apply_filters( 'cip_current_language', 'default' );
+	
+	print_r($current_language);
 
 	if ( empty($link_lang) || $current_language == $link_lang )
 		return $link;
-
+	
 	// Get the permalink structure for the target language
-	$term_link = $wp_rewrite->get_extra_permastruct( $taxonomy . '_' . $link_lang );
-	$term_link = str_replace( "%$taxonomy%", $term->slug, $term_link );
+	$term_link_structure = $wp_rewrite->get_extra_permastruct( $taxonomy . '_' . $link_lang );
+
+	if ( empty( $term_link_structure ) )
+		return $link;
+
+	$term_link = str_replace( "%$taxonomy%", $term->slug, $term_link_structure );
 	$term_link = home_url( user_trailingslashit($term_link) );
 
 	return $term_link;
 }
 
 
-add_filter( 'rewrite_rules_array', 'add_custom_index_page_rewrites' );
+add_filter( 'rewrite_rules_array', 'add_custom_index_page_rewrites', 200);
 
 function add_custom_index_page_rewrites($rules) {
 	$rules_mod = array();
@@ -385,7 +393,7 @@ function add_custom_index_page_rewrites($rules) {
 				foreach ( $replace_with as $lang => $to_replace ) {
 					// Remove the base URL from thepermalink
 					$relative_permalink = trim(str_replace(get_bloginfo('url') . '/', '', get_permalink($to_replace['post_id'])), '/');
-					//$relative_permalink = ltrim($relative_permalink, $lang . '/');
+					$relative_permalink = ltrim($relative_permalink, $lang . '/');
 					$rules_mod[ str_replace($to_replace['name'], $relative_permalink, $pattern) ] = $replace;
 				}
 			} else {
@@ -401,7 +409,7 @@ function add_custom_index_page_rewrites($rules) {
 }
 
 
-add_filter( 'pre_get_posts',  'cip_modify_query' );
+//add_filter( 'pre_get_posts',  'cip_modify_query' );
 
 function cip_modify_query($query) {
 	if ( is_admin() )
