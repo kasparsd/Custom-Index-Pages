@@ -28,7 +28,7 @@ TODO
 
 ~Current Version:0.4~
 
-= 0.3 =
+= 0.4 =
 * Add support for non-pretty permalink index pages for custom post types
 * Fix default active classes on all menus.
 
