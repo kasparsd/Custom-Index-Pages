@@ -26,7 +26,11 @@ TODO
 
 == Changelog ==
 
-~Current Version:0.3~
+~Current Version:0.4~
+
+= 0.3 =
+* Add support for non-pretty permalink index pages for custom post types
+* Fix default active classes on all menus.
 
 = 0.2 =
 * Initial public release
