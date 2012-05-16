@@ -26,7 +26,7 @@ TODO
 
 == Changelog ==
 
-~Current Version:0.6~
+~Current Version:0.5~
 
 = 0.5 =
 * Fix the permalinks to translations of the current view
