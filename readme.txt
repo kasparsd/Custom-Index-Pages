@@ -26,7 +26,10 @@ TODO
 
 == Changelog ==
 
-~Current Version:0.6~
+~Current Version:0.7~
+
+= 0.7 =
+* Cache post and taxonomy index/single page permalinks together with all other plugin settings
 
 = 0.6 =
 * Post and taxonomy permalink structures are now generated on the fly.
