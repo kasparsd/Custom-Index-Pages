@@ -2,7 +2,7 @@
 
 Contributors: kasparsd, metronet
 Tags: custom post types, taxonomies, custom taxonomies, template, theme, i18n
-Requires at least: 3.0
+Requires at least: 3.1
 Tested up to: 3.4
 Stable tag: trunk
 
@@ -26,7 +26,11 @@ TODO
 
 == Changelog ==
 
-~Current Version:0.4~
+~Current Version:0.6~
+
+= 0.5 =
+* Fix the permalinks to translations of the current view
+* Remove single pages from taxonomies -- they use their index pages for parent
 
 = 0.4 =
 * Add support for non-pretty permalink index pages for custom post types

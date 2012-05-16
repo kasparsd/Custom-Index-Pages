@@ -3,7 +3,7 @@
  Plugin Name: Index Pages
  Plugin URI: https://github.com/kasparsd/Custom-Index-Pages
  Description: Add any pages as a taxonomy or post index page.
- Version: 0.4
+ Version: 0.5
  Author: Kaspars Dambis
  Author URI: http://konstruktors.com
  Text Domain: cip
@@ -242,7 +242,26 @@ function cip_settings_validate($input) {
 }
 
 
-add_filter( 'init', 'add_custom_post_taxonomy_slugs', 100 );
+/*
+	Used for front-end functionality
+*/
+
+
+/**
+ * Necessary only for post type index pages, which was introduced in 3.1, I think.
+ */
+/*
+add_filter( 'init', 'modify_post_type_slugs', 25 );
+
+function modify_post_type_slugs() {
+	global $wp_post_types;
+
+	//foreach ( $wp_post_types as $post_type => $settings )
+}
+*/
+
+
+add_filter( 'init', 'add_custom_post_taxonomy_slugs', 15 );
 
 function add_custom_post_taxonomy_slugs() {
 	global $wp_rewrite;
@@ -320,15 +339,34 @@ function get_post_type_link_for_lang($link, $post) {
 }
 
 
-//add_filter('term_link', 'get_term_link_for_lang', 20, 3);
+/*
+add_filter('page_link', 'get_page_link_for_lang', 20, 2);
 
-function get_term_link_for_lang($link, $term, $taxonomy) {
+function get_page_link_for_lang($link, $id) {
+	return $link;
+}
+*/
+
+
+// Not used!
+add_filter( 'post_type_archive_link', 'get_post_type_archive_link_for_lang', 10, 2 );
+
+function get_post_type_archive_link_for_lang( $link, $post_type ) {
+	global $wp_rewrite, $wp_post_types;
+	
+	// The problem is that $link doesn't contain the language code 
+	// and there is no way to guess it for the language switcher feature
+	return $link;
+}
+
+
+add_filter( 'term_link', 'get_term_link_for_lang', 20, 3 );
+
+function get_term_link_for_lang( $link, $term, $taxonomy ) {
 	global $wp_rewrite;
 	
 	$link_lang = apply_filters( 'cip_term_link_language', 'default', $term->term_id, $taxonomy );
 	$current_language = apply_filters( 'cip_current_language', 'default' );
-	
-	print_r($current_language);
 
 	if ( empty($link_lang) || $current_language == $link_lang )
 		return $link;
@@ -346,9 +384,11 @@ function get_term_link_for_lang($link, $term, $taxonomy) {
 }
 
 
-add_filter( 'rewrite_rules_array', 'add_custom_index_page_rewrites', 200);
+add_filter( 'rewrite_rules_array', 'add_custom_index_page_rewrites', 500 );
 
 function add_custom_index_page_rewrites($rules) {
+	global $wp_post_types;
+
 	$rules_mod = array();
 
 	$settings = cip_get_settings( 'all' );
@@ -375,7 +415,7 @@ function add_custom_index_page_rewrites($rules) {
 							$replace_with[$lang]['struct'] = trim($cip_settings['struct'], '/');
 						
 						break;
-					} else if ( ! empty( $cip_settings['index'] ) ) {
+					} else if ( ! empty( $cip_settings['index'] ) && ! in_array( $object_type, $wp_post_types ) ) {
 						$replace_with[$lang] = array(
 								'name' => $object_type,
 								'post_id' => $cip_settings['index'],
@@ -393,6 +433,7 @@ function add_custom_index_page_rewrites($rules) {
 				foreach ( $replace_with as $lang => $to_replace ) {
 					// Remove the base URL from thepermalink
 					$relative_permalink = trim(str_replace(get_bloginfo('url') . '/', '', get_permalink($to_replace['post_id'])), '/');
+					// TODO: make this generic. Currently the language prefix has to be at example.com/lang/post-name
 					$relative_permalink = ltrim($relative_permalink, $lang . '/');
 					$rules_mod[ str_replace($to_replace['name'], $relative_permalink, $pattern) ] = $replace;
 				}
@@ -409,7 +450,7 @@ function add_custom_index_page_rewrites($rules) {
 }
 
 
-//add_filter( 'pre_get_posts',  'cip_modify_query' );
+add_filter( 'pre_get_posts',  'cip_modify_query' );
 
 function cip_modify_query($query) {
 	if ( is_admin() )
@@ -417,7 +458,8 @@ function cip_modify_query($query) {
 
 	if ( isset( $query->query_vars['suppress_filters'] ) && ! empty( $query->query_vars['suppress_filters'] ) )
 		return $query;
-	
+
+	$page_id = 0;
 	$settings = cip_get_settings();
 
 	if ( empty( $settings ) )
@@ -426,7 +468,13 @@ function cip_modify_query($query) {
 	if ( isset( $query->queried_object_id ) )
 		$page_id = $query->queried_object_id;
 	else
-		$page_id = $query->get('page_id');
+		$page_id = get_query_var('page_id');
+
+	if ( is_post_type_archive() && get_query_var('post_type') )
+		$page_id = cip_get_index_page_id( get_query_var('post_type') );
+
+	if ( empty( $page_id ) )
+		return $query;
 
 	$page_object = cip_get_page_object( $page_id );
 
@@ -438,6 +486,8 @@ function cip_modify_query($query) {
 
 	if ( ! post_type_exists( $page_object['object_name'] ) )
 		return $query;
+
+	// TODO: use add_query_arg instead of ->set
 	
 	$query->set( 'post_type', $page_object['object_name'] );
 	$query->set( 'page_id', 0 );
@@ -447,8 +497,15 @@ function cip_modify_query($query) {
 	$query->is_page = false;
 	$query->is_archive = true;
 	$query->is_post_type_archive = true;
-	$query->queried_object = get_page( $page_id );
-	$query->queried_object_id = $page_id;
+
+	if ( $query->is_tax ) {
+		//$query->queried_object = get_taxonomy( $page_object['object_name'] );
+		$query->queried_object = get_page( $page_id );
+		$query->queried_object_id = $page_id;
+	} else {
+		$query->queried_object = get_page( $page_id );
+		$query->queried_object_id = $page_id;
+	}
 
 	return $query;
 }
