@@ -26,7 +26,10 @@ TODO
 
 == Changelog ==
 
-~Current Version:0.5~
+~Current Version:0.6~
+
+= 0.6 =
+* Post and taxonomy permalink structures are now generated on the fly.
 
 = 0.5 =
 * Fix the permalinks to translations of the current view

@@ -3,7 +3,7 @@
  Plugin Name: Index Pages
  Plugin URI: https://github.com/kasparsd/Custom-Index-Pages
  Description: Add any pages as a taxonomy or post index page.
- Version: 0.5
+ Version: 0.6
  Author: Kaspars Dambis
  Author URI: http://konstruktors.com
  Text Domain: cip
@@ -65,13 +65,14 @@ function cip_disable_sslverify($args, $url) {
 }
 
 
+/**
+ * Print the admin settings page under Settings > Index Pages
+ */
 function cip_settings() {
 	global $wp_rewrite;
 
 	$current_language = apply_filters('cip_current_language', 'default');
-
 	$settings = cip_get_settings();
-
 	?>
 
 	<div class="wrap">
@@ -235,277 +236,105 @@ function cip_settings_validate($input) {
 	$current_language = apply_filters( 'cip_current_language', 'default' );
 
 	$settings = get_option('cip_settings');
+
+	if ( !is_array( $settings ) )
+		$settings = array();
+
 	$settings[$current_language] = $input;
 
-	//$settings = array();
 	return $settings;
 }
 
 
-/*
-	Used for front-end functionality
+/* 
+	Permalink structure replacement
 */
 
+// Modify the global $wp_rewrite to include the new rewrites
+add_filter( 'init', 'add_custom_index_rewrite_rules', 11 );
 
 /**
- * Necessary only for post type index pages, which was introduced in 3.1, I think.
+ * Permalink structures are generated on the fly, because that is the way
+ * custom post types and taxonomies are registered/added as are the permalinks
+ * to those posts, taxonomies and their archives. So we'll cache the 
+ * permalinks that we're to put in front of those structures.
  */
-/*
-add_filter( 'init', 'modify_post_type_slugs', 25 );
-
-function modify_post_type_slugs() {
-	global $wp_post_types;
-
-	//foreach ( $wp_post_types as $post_type => $settings )
-}
-*/
-
-
-add_filter( 'init', 'add_custom_post_taxonomy_slugs', 15 );
-
-function add_custom_post_taxonomy_slugs() {
-	global $wp_rewrite;
-
-	if ( is_admin() || ! $wp_rewrite->using_permalinks() )
-		return;
-
-	$settings = cip_get_settings( 'all' );
-
-	if ( empty($settings) )
-		return;
-
-	// We don't need this, because all of our rewrites are in the extra_permastructs already
-	$wp_rewrite->extra_rules_top = array();
-
-	$current_lang = apply_filters( 'cip_current_language', 'default' );
-	$lang_permastructures = array();
-
-	foreach ( $wp_rewrite->extra_permastructs as $name => $structure ) {
-		foreach ( $settings as $lang => $cips ) {
-			$page_id = 0;
-
-			// Change only taxonomy and post_type NON index rewrites
-			if ( post_type_exists($name) && isset( $cips[$name]['page'] ) && ! empty( $cips[$name]['page'] ) )
-				$page_id = $cips[$name]['page'];
-			else if ( isset( $cips[$name]['index'] ) && ! empty( $cips[$name]['index'] ) )
-				$page_id = $cips[$name]['index'];
-			else
-				continue;
-			
-			// Remove the site URL from the permalink
-			$prefix = trim( str_replace( get_bloginfo('url') . '/', '', get_permalink($page_id) ), '/' );
-			$structure = str_replace($name . '/', $prefix . '/', $wp_rewrite->extra_permastructs[$name]['struct']);
-			
-			if ( $lang == $current_lang ) {
-				// Change the permastructures for the current language by default
-				$lang_permastructures[$name] = $wp_rewrite->extra_permastructs[$name];
-				$lang_permastructures[$name]['struct'] = $structure;
-				$lang_permastructures[$name]['with_front'] = false;
-			}
-			
-			// Add permastructures for other languages, in case we need to find the permalink of the translation
-			$lang_permastructures[$name . '_' . $lang] = $wp_rewrite->extra_permastructs[$name];
-			$lang_permastructures[$name . '_' . $lang]['struct'] = $structure;
-			$lang_permastructures[$name . '_' . $lang]['with_front'] = false;
-		}
-	}
-
-	$wp_rewrite->extra_permastructs = array_merge($wp_rewrite->extra_permastructs, $lang_permastructures);
-	//print_r($wp_rewrite->extra_permastructs);
-}
-
-
-add_filter('post_type_link', 'get_post_type_link_for_lang', 20, 2);
-
-function get_post_type_link_for_lang($link, $post) {
-	global $wp_rewrite;
-
-	$link_lang = apply_filters('cip_post_type_link_language', 'default', $post->post_type, $post->ID);
-	$current_language = apply_filters('cip_current_language', 'default');
-
-	if (empty($link_lang) || $current_language == $link_lang)
-		return $link;
-
-	// Get the permalink structure for the target language
-	$post_link_structure = $wp_rewrite->get_extra_permastruct($post->post_type . '_' . $link_lang);
-
-	if ( empty( $post_link_structure ) )
-		return $link;
-
-	$post_link = str_replace("%$post->post_type%", $post->post_name, $post_link_structure);
-	$post_link = home_url( user_trailingslashit($post_link) );
-
-	return $post_link;
-}
-
-
-/*
-add_filter('page_link', 'get_page_link_for_lang', 20, 2);
-
-function get_page_link_for_lang($link, $id) {
-	return $link;
-}
-*/
-
-
-// Not used!
-add_filter( 'post_type_archive_link', 'get_post_type_archive_link_for_lang', 10, 2 );
-
-function get_post_type_archive_link_for_lang( $link, $post_type ) {
+function add_custom_index_rewrite_rules() {
 	global $wp_rewrite, $wp_post_types;
-	
-	// The problem is that $link doesn't contain the language code 
-	// and there is no way to guess it for the language switcher feature
-	return $link;
-}
 
-
-add_filter( 'term_link', 'get_term_link_for_lang', 20, 3 );
-
-function get_term_link_for_lang( $link, $term, $taxonomy ) {
-	global $wp_rewrite;
-	
-	$link_lang = apply_filters( 'cip_term_link_language', 'default', $term->term_id, $taxonomy );
-	$current_language = apply_filters( 'cip_current_language', 'default' );
-
-	if ( empty($link_lang) || $current_language == $link_lang )
-		return $link;
-	
-	// Get the permalink structure for the target language
-	$term_link_structure = $wp_rewrite->get_extra_permastruct( $taxonomy . '_' . $link_lang );
-
-	if ( empty( $term_link_structure ) )
-		return $link;
-
-	$term_link = str_replace( "%$taxonomy%", $term->slug, $term_link_structure );
-	$term_link = home_url( user_trailingslashit($term_link) );
-
-	return $term_link;
-}
-
-
-add_filter( 'rewrite_rules_array', 'add_custom_index_page_rewrites', 500 );
-
-function add_custom_index_page_rewrites($rules) {
-	global $wp_post_types;
-
-	$rules_mod = array();
+	if ( empty( $wp_rewrite->extra_permastructs ) )
+		return;
 
 	$settings = cip_get_settings( 'all' );
+	$current_lang = apply_filters( 'cip_current_language', 'default' );
 
-	if (empty($settings))
+	if ( empty( $settings ) )
 		return $rules;
 
-	foreach ($rules as $pattern => $replace) {
-			$replace_with = array();
-			
-			foreach ($settings as $lang => $cips) {
+	// Loop through all permastructures
+	foreach ($wp_rewrite->extra_permastructs as $object_type => $structure) {
 
-				foreach ($cips as $object_type => $cip_settings) {
-					if ( strpos( $pattern, $object_type ) === false )
-						continue;
+		// Loop through all languages
+		foreach ($settings as $lang => $cips) {
+			if ( empty( $cips[ $object_type ] ) )
+				continue;
 
-					if ( ! empty( $cip_settings['page'] ) && ! strpos( $replace, 'post_type' ) ) {
-						$replace_with[$lang] = array(
-								'name' => $object_type,
-								'post_id' => $cip_settings['page'],
-							);
+			$object_settings = $cips[ $object_type ];
 
-						if (isset($cip_settings['struct']) && !empty($cip_settings['struct']))
-							$replace_with[$lang]['struct'] = trim($cip_settings['struct'], '/');
-						
-						break;
-					} else if ( ! empty( $cip_settings['index'] ) && ! in_array( $object_type, $wp_post_types ) ) {
-						$replace_with[$lang] = array(
-								'name' => $object_type,
-								'post_id' => $cip_settings['index'],
-							);
-						
-						if (isset($cip_settings['struct']) && !empty($cip_settings['struct']))
-							$replace_with[$lang]['struct'] = trim($cip_settings['struct'], '/');
-						
-						break;
+			if ( array_key_exists( $object_type, $wp_post_types ) && isset( $object_settings['page'] ) && ! empty( $object_settings['page'] ) ) {
+				$page_struct = '/' . cip_get_page_struct_prefix( $object_settings['page'], $lang ) . '/%' . $object_type . '%';
+
+				// Add permastructure for the current language
+				if ( $current_lang == $lang )
+					$wp_rewrite->extra_permastructs[ $object_type ]['struct'] = $page_struct;
+				
+				// Add the permastructure for $lang language
+				$wp_rewrite->extra_permastructs[ $object_type . '_' . $lang ] = $wp_rewrite->extra_permastructs[ $object_type ];
+				$wp_rewrite->extra_permastructs[ $object_type . '_' . $lang ]['struct'] = $page_struct;
+
+				// Add the archive index pages on extra_rules_top
+				foreach ( $wp_rewrite->extra_rules_top as $rule => $rewrite ) {
+					if ( strstr( $rule, $object_type ) ) {
+						$new_rule = str_replace( $object_type, cip_get_page_struct_prefix( $object_settings['index'], $lang ), $rule );
+						$wp_rewrite->extra_rules_top = array( $new_rule => $rewrite ) + $wp_rewrite->extra_rules_top;
 					}
 				}
-			}
 
-			if ( !empty($replace_with) ) {
-				foreach ( $replace_with as $lang => $to_replace ) {
-					// Remove the base URL from thepermalink
-					$relative_permalink = trim(str_replace(get_bloginfo('url') . '/', '', get_permalink($to_replace['post_id'])), '/');
-					// TODO: make this generic. Currently the language prefix has to be at example.com/lang/post-name
-					$relative_permalink = ltrim($relative_permalink, $lang . '/');
-					$rules_mod[ str_replace($to_replace['name'], $relative_permalink, $pattern) ] = $replace;
-				}
-			} else {
-				$rules_mod[$pattern] = $replace;
+			} else if ( taxonomy_exists($object_type) && isset( $object_settings['index'] ) && ! empty( $object_settings['index'] ) ) {
+				$page_struct = '/' . cip_get_page_struct_prefix( $object_settings['index'], $lang ) . '/%' . $object_type . '%';
+
+				// Add permastructure for the current language
+				if ( $current_lang == $lang )
+					$wp_rewrite->extra_permastructs[ $object_type ]['struct'] = $page_struct;
+				
+				// Add the permastructure for $lang language
+				$wp_rewrite->extra_permastructs[ $object_type . '_' . $lang ] = $wp_rewrite->extra_permastructs[ $object_type ];
+				$wp_rewrite->extra_permastructs[ $object_type . '_' . $lang ]['struct'] = $page_struct;
 			}
+		}
+
 	}
 
-	//print_r($rules_mod);
-	//print_r($rules);
-	//die();
-	//return $rules;
-	return $rules_mod;
 }
 
 
-add_filter( 'pre_get_posts',  'cip_modify_query' );
+add_filter( 'pre_get_posts', 'cip_modify_query' );
 
 function cip_modify_query($query) {
+	global $wp_post_types;
+
 	if ( is_admin() )
 		return $query;
 
 	if ( isset( $query->query_vars['suppress_filters'] ) && ! empty( $query->query_vars['suppress_filters'] ) )
 		return $query;
 
-	$page_id = 0;
-	$settings = cip_get_settings();
-
-	if ( empty( $settings ) )
-		return $query;
-
-	if ( isset( $query->queried_object_id ) )
-		$page_id = $query->queried_object_id;
-	else
-		$page_id = get_query_var('page_id');
-
-	if ( is_post_type_archive() && get_query_var('post_type') )
-		$page_id = cip_get_index_page_id( get_query_var('post_type') );
-
-	if ( empty( $page_id ) )
-		return $query;
-
-	$page_object = cip_get_page_object( $page_id );
-
-	if ( empty( $page_object ) )
-		return $query;
-
-	if ( $page_object['type'] != 'index' )
-		return $query;
-
-	if ( ! post_type_exists( $page_object['object_name'] ) )
-		return $query;
-
-	// TODO: use add_query_arg instead of ->set
-	
-	$query->set( 'post_type', $page_object['object_name'] );
-	$query->set( 'page_id', 0 );
-	$query->set( 'pagename', null );
-
-	$query->is_singular = false;
-	$query->is_page = false;
-	$query->is_archive = true;
-	$query->is_post_type_archive = true;
-
-	if ( $query->is_tax ) {
-		//$query->queried_object = get_taxonomy( $page_object['object_name'] );
-		$query->queried_object = get_page( $page_id );
-		$query->queried_object_id = $page_id;
-	} else {
-		$query->queried_object = get_page( $page_id );
-		$query->queried_object_id = $page_id;
-	}
+	/**
+	 * There is a bug in WordPress, which generates a Notice PHP warning
+	 * on post_type_archive pages with selected taxonomy term.
+	 */
+	//if ( is_post_type_archive() && is_tax() )
+	//	$query->is_post_type_archive = null;
 
 	return $query;
 }
@@ -533,6 +362,29 @@ function cip_correct_menu_active_parents( $classes, $item ) {
 /* 
 	Settings getters
 */
+
+function cip_get_page_struct_prefix( $page_id, $lang = 'default' ) {
+	$cip_permalinks = get_option( 'cip_permalinks' );
+
+	if ( ! is_array( $cip_permalinks ) )
+		$cip_permalinks = array();
+
+	if ( ! isset( $cip_permalinks[ $page_id ] ) ) {
+		if ( $permalink = get_permalink( $page_id ) ) {
+			$cip_permalinks[ $page_id ] = $permalink;
+			update_option( 'cip_permalinks', $cip_permalinks );
+		}
+	} else {
+		$permalink = $cip_permalinks[ $page_id ];
+	}
+
+	// Remove the base URL from thepermalink
+	$relative_permalink = trim( str_replace( get_bloginfo('url'), '', $permalink ), '/' );
+	// TODO: make this generic. Currently the language prefix has to be at example.com/lang/post-name
+	$relative_permalink = ltrim( $relative_permalink, $lang . '/' );
+	
+	return $relative_permalink;
+}
 
 function cip_get_single_page_id( $object_name, $language = 'default' ) {
 	$settings = cip_get_settings( $language );
@@ -580,10 +432,21 @@ function cip_get_settings( $language = 'default' ) {
 }
 
 
+// Add a public filter that can be used within themes to get the index or parent pages
+add_filter( 'cip_get_current_object_page_id', 'cip_get_current_object_page_id' );
+
+function cip_get_current_object_page_id() {
+	if ( is_post_type_archive() )
+		return cip_get_index_page_id( get_query_var('post_type'), apply_filters( 'cip_current_language', 'default' ) );
+
+	return false;
+}
+
+
+
 /*
 	For WPML plugin
 */
-
 
 add_filter('cip_current_language', 'wpml_get_current_language');
 
