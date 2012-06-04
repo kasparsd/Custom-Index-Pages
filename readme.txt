@@ -26,7 +26,11 @@ TODO
 
 == Changelog ==
 
-~Current Version:0.7~
+~Current Version:0.7.5~
+
+= 0.7.5 =
+* Enable custom index pages even when no single page is defined.
+* Multiple bug fixes.
 
 = 0.7 =
 * Cache post and taxonomy index/single page permalinks together with all other plugin settings
