@@ -397,7 +397,7 @@ function cip_get_single_page_permalink( $object_name, $language = 'default' ) {
 
 function cip_get_index_page_id( $object_name, $language = 'default' ) {
 	$settings = cip_get_settings( $language );
-
+	
 	if ( isset( $settings[ $object_name ][ 'index' ] ) )
 		return $settings[ $object_name ][ 'index' ];
 
@@ -446,8 +446,12 @@ function cip_get_settings( $language = 'default' ) {
 add_filter( 'cip_get_current_object_page_id', 'cip_get_current_object_page_id' );
 
 function cip_get_current_object_page_id() {
-	if ( is_post_type_archive() )
+	global $wp_query;
+
+	if ( get_query_var('post_type') )
 		return cip_get_index_page_id( get_query_var('post_type'), apply_filters( 'cip_current_language', 'default' ) );
+	if ( is_tax() )
+		return cip_get_index_page_id( get_query_var('taxonomy'), apply_filters( 'cip_current_language', 'default' ) );
 
 	return false;
 }
