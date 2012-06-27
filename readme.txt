@@ -26,7 +26,7 @@ TODO
 
 == Changelog ==
 
-~Current Version:0.7.5~
+~Current Version:0.7.6~
 
 = 0.7.5 =
 * Enable custom index pages even when no single page is defined.
