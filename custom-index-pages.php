@@ -3,7 +3,7 @@
  Plugin Name: Index Pages
  Plugin URI: https://github.com/kasparsd/Custom-Index-Pages
  Description: Add any pages as a taxonomy or post index page.
- Version: 0.7.5
+ Version: 0.7.6
  Author: Kaspars Dambis
  Author URI: http://konstruktors.com
  Text Domain: cip
@@ -317,6 +317,7 @@ function add_custom_index_rewrite_rules( ) {
 				foreach ( $wp_rewrite->extra_rules_top as $rule => $rewrite ) {
 					if ( strstr( $rule, $object_type ) && ! empty( $object_settings['index_permalink'] ) ) {
 						$new_rule = str_replace( $object_type, cip_get_page_struct_prefix( $object_settings['index_permalink'], $lang ), $rule );
+						
 						$wp_rewrite->extra_rules_top = array( $new_rule => $rewrite ) + $wp_rewrite->extra_rules_top;
 
 						// Remove the default rewrite rule
@@ -372,7 +373,7 @@ function cip_get_page_struct_prefix( $permalink, $lang = 'default' ) {
 	
 	// TODO: make this generic. Currently the language prefix has to be at example.com/lang/post-name
 	if ( is_admin() )
-		$relative_permalink = ltrim( $relative_permalink, $lang . '/' );
+		$relative_permalink = preg_replace( "/^$lang\//i", '', $relative_permalink );
 	
 	return $relative_permalink;
 }
