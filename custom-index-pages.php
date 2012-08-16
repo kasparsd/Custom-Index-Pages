@@ -3,7 +3,7 @@
  Plugin Name: Index Pages
  Plugin URI: https://github.com/kasparsd/Custom-Index-Pages
  Description: Add any pages as a taxonomy or post index page.
- Version: 0.7.6
+ Version: 0.8.2
  Author: Kaspars Dambis
  Author URI: http://konstruktors.com
  Text Domain: cip
@@ -36,7 +36,7 @@ function cip_git_updater() {
 	require_once('updater/updater.php');
 
 	// Force update check
-	// define('WP_GITHUB_FORCE_UPDATE', true);
+	define('WP_GITHUB_FORCE_UPDATE', false);
 
 	$config = array(
 		'slug' => basename(dirname(__FILE__)) . '/' . basename(__FILE__),
@@ -70,9 +70,6 @@ function cip_disable_sslverify($args, $url) {
  */
 function cip_settings() {
 	global $wp_rewrite;
-
-	// This is needed for updating the permalinks
-	$wp_rewrite->flush_rules();
 
 	$current_language = apply_filters('cip_current_language', 'default');
 	$settings = cip_get_settings($current_language);
@@ -241,6 +238,9 @@ function cip_settings() {
 
 function cip_settings_validate( $input ) {
 	global $wp_rewrite;
+
+	// This is needed for updating the permalinks
+	flush_rewrite_rules( false );
 	
 	$current_language = apply_filters( 'cip_current_language', 'default' );
 	$settings = get_option('cip_settings');
@@ -342,24 +342,61 @@ function add_custom_index_rewrite_rules( ) {
 	}
 }
 
+add_filter( 'wp_nav_menu_objects', 'cip_fix_menu_active_items', 10, 2 );
 
-add_filter( 'nav_menu_css_class', 'cip_correct_menu_active_parents', 10, 2 );
+function cip_fix_menu_active_items( $items, $args ) {
+	$settings = cip_get_settings();
+	$blog_page_id = get_option('page_for_posts');
 
-function cip_correct_menu_active_parents( $classes, $item ) {
-	if ( $item->object_id == get_option('page_for_posts') )
-		$classes = array_filter( $classes, 'cip_filter_current_menu_classes' );
+	$current_ancestors = array();
+	$current_parents = array();
 
-	if ( $item->object_id == cip_get_single_page_id( get_post_type() ) || $item->object_id == cip_get_index_page_id( get_post_type() ) )
-		$classes[] = 'current_page_parent';
-
-	return $classes;
-}
-
-function cip_filter_current_menu_classes( $classes ) {
-	if ( strstr( $classes, 'current_page' ) ) 
-		return false; 
+	$current_object = false;
 	
-	return true; 
+	// Get the current view type -- archive or single and of what taxonomy and post type
+	if ( is_tax() )
+		$current_object = get_query_var('taxonomy');
+	elseif ( get_query_var('post_type') )
+		$current_object = get_query_var('post_type');
+	elseif ( is_category() )
+		$current_object = 'category';
+	elseif ( is_tag() )
+		$current_object = 'tag';
+
+	if ( ! $current_object )
+		return $items;
+
+	if ( is_archive() && ! empty( $settings[ $current_object ]['index'] ) )
+		$current_parents = get_post_ancestors( $settings[ $current_object ]['index'] );
+	elseif ( ! empty( $settings[ $current_object ]['page'] ) )
+		$current_parents = get_post_ancestors( $settings[ $current_object ]['page'] );
+
+	if ( isset( $settings[ $current_object ]['page'] ) && ! empty( $settings[ $current_object ]['page'] ) )
+		$current_parents[] = $settings[ $current_object ]['page'];
+
+	if ( isset( $settings[ $current_object ]['index'] ) && ! empty( $settings[ $current_object ]['index'] ) )
+		$current_ancestors[] = $settings[ $current_object ]['index'];
+
+	foreach ( $items as $item ) {
+		// Is parent of the current view
+		if ( in_array( $item->object_id, $current_parents ) ) {
+			$item->classes[] = 'current_page_parent';
+			$item->classes[] = 'current-menu-parent';
+			$item->current_item_parent = true;
+		}
+		// Is ancestor of the current view
+		if ( in_array( $item->object_id, $current_ancestors ) ) {
+			$item->classes[] = 'current_page_ancestor';
+			$item->classes[] = 'current-menu-ancestor';
+			$item->current_item_ancestor = true;
+		}
+		// WordPress things that custom post type archive pages are always related to blog
+		if ( get_query_var('post_type') && $item->object_id == $blog_page_id )
+			if ( $active_class_index = array_search( 'current_page_parent', $item->classes ) )
+				unset( $item->classes[ $active_class_index ] );
+	}
+
+	return $items;
 }
 
 
@@ -367,12 +404,12 @@ function cip_filter_current_menu_classes( $classes ) {
 	Settings getters
 */
 
-function cip_get_page_struct_prefix( $permalink, $lang = 'default' ) {
+function cip_get_page_struct_prefix( $permalink, $lang = 'default', $strip_lang = true ) {
 	// Remove the base URL from thepermalink
 	$relative_permalink = trim( str_replace( get_bloginfo('url'), '', $permalink ), '/' );
 	
 	// TODO: make this generic. Currently the language prefix has to be at example.com/lang/post-name
-	if ( is_admin() )
+	if ( $strip_lang )
 		$relative_permalink = preg_replace( "/^$lang\//i", '', $relative_permalink );
 	
 	return $relative_permalink;
@@ -457,6 +494,16 @@ function cip_get_current_object_page_id() {
 	return false;
 }
 
+// Return the correct post type archive link, because it uses the struct from register_post_type.
+add_filter( 'post_type_archive_link', 'cip_post_type_archive_link', 10, 2 );
+
+function cip_post_type_archive_link( $link, $post_type ) {
+	if ( $page_id = cip_get_index_page_id( $post_type, apply_filters( 'cip_current_language', 'default' ) ) )
+		return get_permalink( $page_id );
+
+	return $link;
+}
+
 
 /*
 	For WPML plugin
@@ -485,11 +532,32 @@ function cip_language_switcher( $languages ) {
 	return $languages;
 }
 
+//add_filter( 'post_link', 'cip_add_post_permastructure_prefix', 10, 2 );
+
+function cip_add_post_permastructure_prefix( $link, $post ) {
+	global $wp_rewrite, $sitepress;
+
+	if ( ! is_object($sitepress) )
+		return $link;
+
+	$link_lang = $sitepress->get_language_for_element( $post->ID, 'post_' . $post->post_type );
+	$settings = cip_get_settings( $link_lang );
+
+	if ( empty( $settings ) )
+		return $link;
+
+	// Add regular post permastructure
+	if ( isset( $settings['post']['page'] ) && ! empty( $settings['post']['page_permalink'] ) )
+		return str_replace( get_bloginfo('url'), get_bloginfo('url') . '/' . cip_get_page_struct_prefix( $settings['post']['page_permalink'], $language ), $link );
+
+	return $link;
+}
+
 
 // Change the permalink_structure for the link to the translation
-// add_filter( 'post_type_link', 'cip_get_translated_post_link', 10, 2 );
+add_filter( 'post_type_link', 'cip_get_translated_post_type_link', 10, 4 );
 
-function cip_get_translated_post_link( $link, $post ) {
+function cip_get_translated_post_type_link( $link, $post, $leavename, $sample ) {
 	global $wp_rewrite, $sitepress;
 
 	if ( ! is_object($sitepress) )
@@ -505,18 +573,24 @@ function cip_get_translated_post_link( $link, $post ) {
 	if ( $post_type->hierarchical )
 		$slug = get_page_uri( $post->ID );
 
-	$link = str_replace( "%$post->post_type%", $slug, $permastructure );
+	if ( $leavename )
+		$link = $permastructure;
+	else
+		$link = str_replace( "%$post->post_type%", $slug, $permastructure );
+
+	if ( $language != 'nb' )
+		$link = $language . '/' . $link;
 
 	return home_url( user_trailingslashit($link) );
 }
 
 // Change the permalink to the term translation
-//add_filter('term_link', 'get_term_link_for_lang', 20, 3);
+add_filter('term_link', 'get_term_link_for_lang', 20, 3);
 
 function get_term_link_for_lang($link, $term, $taxonomy) {
 	global $wp_rewrite, $sitepress;
 
-	if ( ! is_object($sitepress) )
+	if ( ! is_object( $sitepress ) )
 		return $link;
 
 	$link_lang = $sitepress->get_language_for_element( $term->term_taxonomy_id, 'tax_' . $taxonomy );
@@ -524,10 +598,17 @@ function get_term_link_for_lang($link, $term, $taxonomy) {
 	if ( empty( $link_lang ) )
 		return $link;
 
-	$link = $wp_rewrite->get_extra_permastruct( $taxonomy . '_' . $link_lang );
-	$link = str_replace( "%$taxonomy%", $term->slug, $link );
+	$link_perma_struct = $wp_rewrite->get_extra_permastruct( $taxonomy . '_' . $link_lang );
 	
-	return home_url( user_trailingslashit($link) );
+	if ( empty( $link_perma_struct ) )
+		return $link;
+
+	$link = str_replace( "%$taxonomy%", $term->slug, $link_perma_struct );
+
+	if ( $link_lang != 'nb' )
+		$link = $link_lang . '/' . $link;
+	
+	return home_url( user_trailingslashit( $link ) );
 }
 
 
